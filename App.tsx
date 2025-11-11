@@ -13,19 +13,22 @@ const App: React.FC = () => {
     const [data, setData] = useState<CaseData[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [activeView, setActiveView] = useState<View>('home');
-    const [screen, setScreen] = useState<Screen>('dashboard');
+    const [screen, setScreen] = useState<Screen>('upload');
 
     useEffect(() => {
-        const { data: parsedData, error: parseError } = parseAndCleanData(defaultDataCSV);
-        if (parseError) {
-            setError(parseError);
-            setData(null);
-            setScreen('upload'); 
-        } else {
-            setData(parsedData);
-            setError(null);
-            setScreen('dashboard');
-        }
+        // Start with a small delay to allow the upload screen to render first, improving user experience.
+        setTimeout(() => {
+            const { data: parsedData, error: parseError } = parseAndCleanData(defaultDataCSV);
+            if (parseError) {
+                setError(parseError);
+                setData(null);
+                setScreen('upload'); 
+            } else {
+                setData(parsedData);
+                setError(null);
+                setScreen('dashboard');
+            }
+        }, 100);
     }, []);
 
     const handleDataLoaded = (csvText: string) => {

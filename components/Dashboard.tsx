@@ -547,8 +547,9 @@ const SentencingAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ d
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        <Tooltip content={<CustomTooltip />} unit=" años" />
-                        <Bar dataKey="avgSentence" name="Sentencia Promedio">
+                        {/* FIX: Moved unit prop from Tooltip to Bar component to correctly pass it to the tooltip payload. */}
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="avgSentence" name="Sentencia Promedio" unit=" años">
                             {avgSentenceByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
                         </Bar>
                     </BarChart>
@@ -580,8 +581,9 @@ const DurationAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ dat
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        <Tooltip content={<CustomTooltip />} unit=" días" />
-                        <Bar dataKey="avgDuration" name="Duración Promedio">
+                        {/* FIX: Moved unit prop from Tooltip to Bar component to correctly pass it to the tooltip payload. */}
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="avgDuration" name="Duración Promedio" unit=" días">
                             {avgDurationByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
                         </Bar>
                     </BarChart>
