@@ -1,0 +1,7 @@
+{
+  "name": "Análisis de Sesgos en Justicia Criminal",
+  "description": "Una aplicación web interactiva para analizar sesgos en datos del sistema de justicia criminal, basada en el estudio 'Identifying biases in legal data: An algorithmic fairness perspective' de Jackson Sargent y Melanie Weber.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

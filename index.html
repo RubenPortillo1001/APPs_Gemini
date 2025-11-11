@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Análisis de Sesgos en Justicia Criminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'neutral-base': '#f5f5f5',
+              'neutral-text': '#262626',
+              'sidebar': '#1f2937',
+              'sidebar-text': '#d1d5db',
+              'sidebar-hover': '#374151',
+              'danger-bg': '#fef2f2',
+              'danger-text': '#b91c1c',
+              'danger-border': '#ef4444',
+              'warning-bg': '#fffbeb',
+              'warning-text': '#b45309',
+              'warning-border': '#f59e0b',
+              'success-bg': '#f0fdf4',
+              'success-text': '#166534',
+              'primary': '#2563eb',
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/d3-dsv@3"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^0.23.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "recharts": "https://aistudiocdn.com/recharts@^3.4.1",
+    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.3",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+</head>
+<body class="bg-neutral-base text-neutral-text">
+    <div id="root"></div>
+    <script type="module" src="./index.js"></script>
+</body>
+</html>
