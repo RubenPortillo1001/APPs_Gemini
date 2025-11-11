@@ -1,8 +1,6 @@
 // This is a large component containing all analysis logic and views.
 // For a larger application, these sections would be split into separate files.
 
-// FIX: Added useState and useMemo to the import from React to fix 'Cannot find name' errors.
-// FIX: Added useEffect to handle state synchronization and prevent render crashes.
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { CaseData, View, FilterState } from '../types';
@@ -15,15 +13,6 @@ declare global {
     interface Window {
         html2canvas: any;
     }
-}
-
-interface DashboardProps {
-    data: CaseData[];
-    activeView: View;
-    uniqueValues: {
-        offenseCategories: string[];
-        incidentCities: string[];
-    };
 }
 
 // Chart color palette
@@ -52,210 +41,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     }
     return null;
 };
-
-
-const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues }) => {
-    
-    const yearExtent = useMemo((): [number, number] => {
-        const currentYear = new Date().getFullYear();
-        const defaultRange: [number, number] = [currentYear - 20, currentYear];
-
-        if (!data || data.length === 0) {
-            return defaultRange;
-        }
-        
-        const years = data
-            .map(d => d.FECHA_RECEPCION ? d.FECHA_RECEPCION.getFullYear() : null)
-            .filter((y): y is number => y !== null && !isNaN(y));
-
-        if (years.length === 0) {
-            return defaultRange;
-        }
-        
-        const minYear = Math.min(...years);
-        const maxYear = Math.max(...years);
-
-        if (!isFinite(minYear) || !isFinite(maxYear)) {
-            return defaultRange;
-        }
-
-        return [minYear, maxYear];
-    }, [data]);
-
-    const [filters, setFilters] = useState<FilterState>({
-        yearRange: yearExtent,
-        offenseCategory: 'All',
-        incidentCity: 'All',
-    });
-
-    // This effect synchronizes the filter's year range with the data's actual year range.
-    // It prevents crashes when new data is loaded by ensuring the range slider values
-    // are always within the min/max bounds.
-    useEffect(() => {
-        setFilters(f => ({ ...f, yearRange: yearExtent }));
-    }, [yearExtent]);
-    
-    const [thresholds, setThresholds] = useState({
-        representation: { under: 10, over: 60 },
-        disposition: 15,
-        sentencing: 1.5,
-        duration: 60,
-    });
-
-    const filteredData = useMemo(() => {
-        return data.filter(d => {
-            const year = d.FECHA_RECEPCION.getFullYear();
-            const yearMatch = year >= filters.yearRange[0] && year <= filters.yearRange[1];
-            const offenseMatch = filters.offenseCategory === 'All' || d.CATEGORIA_DELITO === filters.offenseCategory;
-            const cityMatch = filters.incidentCity === 'All' || d.CIUDAD_INCIDENTE === filters.incidentCity;
-            return yearMatch && offenseMatch && cityMatch;
-        });
-    }, [data, filters]);
-
-    const handleExportPDF = () => {
-        const input = document.getElementById('pdf-content');
-        if (input) {
-            const sidebar = document.querySelector('.no-print');
-            (sidebar as HTMLElement).style.display = 'none';
-
-            window.html2canvas(input, { scale: 2 }).then((canvas: any) => {
-                const imgData = canvas.toDataURL('image/png');
-                const pdf = new jsPDF({
-                    orientation: 'p',
-                    unit: 'px',
-                    format: 'a4'
-                });
-
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = pdf.internal.pageSize.getHeight();
-                const canvasWidth = canvas.width;
-                const canvasHeight = canvas.height;
-                const ratio = canvasWidth / canvasHeight;
-                const width = pdfWidth;
-                const height = width / ratio;
-                
-                let position = 0;
-                let heightLeft = height;
-
-                pdf.addImage(imgData, 'PNG', 0, position, width, height);
-                heightLeft -= pdfHeight;
-
-                while (heightLeft > 0) {
-                    position = position - pdfHeight;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 0, position, width, height);
-                    heightLeft -= pdfHeight;
-                }
-
-                pdf.save('informe_sesgos.pdf');
-                (sidebar as HTMLElement).style.display = 'flex';
-            });
-        }
-    };
-    
-     const handleExportCSV = (summary: boolean) => {
-        let csvContent = "data:text/csv;charset=utf-8,";
-        let rows: any[] = [];
-        let filename = 'datos_procesados.csv';
-
-        if(summary) {
-            const races = [...new Set(filteredData.map(d => d.RAZA))];
-            rows.push(['Raza', 'Total Casos', 'Sentencia Promedio (Años)']);
-            races.forEach(race => {
-                const groupData = filteredData.filter(d => d.RAZA === race);
-                const avgSentence = groupData.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / groupData.length;
-                rows.push([race, groupData.length, avgSentence.toFixed(2)]);
-            });
-            filename = 'resumen_sesgos.csv';
-        } else {
-            rows = [Object.keys(filteredData[0])];
-            filteredData.forEach(item => {
-                rows.push(Object.values(item).map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : v));
-            });
-        }
-        
-        rows.forEach(function(rowArray) {
-            let row = rowArray.join(",");
-            csvContent += row + "\r\n";
-        });
-        
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-
-    const renderContent = () => {
-        switch (activeView) {
-            case 'home': return <DataSummary data={data} />;
-            case 'summary': return <BiasSummaryDashboard data={filteredData} thresholds={thresholds} />;
-            case 'demographics': return <DemographicAnalysis data={filteredData} thresholds={thresholds} />;
-// FIX: Added component definitions to resolve 'Cannot find name' errors.
-            case 'dispositions': return <DispositionAnalysis data={filteredData} thresholds={thresholds} />;
-            case 'sentencing': return <SentencingAnalysis data={filteredData} thresholds={thresholds} />;
-            case 'duration': return <DurationAnalysis data={filteredData} thresholds={thresholds} />;
-            case 'intersectional': return <IntersectionalAnalysis data={filteredData} />;
-            case 'reports': return (
-                <Card title="Generación de Informes">
-                    <div className="space-y-4">
-                        <p>Exporte los análisis actuales y datos procesados.</p>
-                        <div className="flex space-x-4">
-                            <button onClick={handleExportPDF} className="bg-primary text-white font-bold py-2 px-4 rounded hover:bg-blue-600 transition-colors">Exportar a PDF</button>
-                            <button onClick={() => handleExportCSV(false)} className="bg-green-600 text-white font-bold py-2 px-4 rounded hover:bg-green-700 transition-colors">Exportar Datos Procesados (CSV)</button>
-                            <button onClick={() => handleExportCSV(true)} className="bg-green-600 text-white font-bold py-2 px-4 rounded hover:bg-green-700 transition-colors">Exportar Resumen (CSV)</button>
-                        </div>
-                        <div className="pt-8 text-sm text-gray-600">
-                            <h4 className="font-bold mb-2">Referencias</h4>
-                            <p><strong>Estudio de Referencia:</strong> Sargent, J., & Weber, M. (2022). <i>Identifying biases in legal data: An algorithmic fairness perspective</i>. arXiv preprint arXiv:2208.09946.</p>
-                            <p className="mt-2"><strong>Metodología:</strong> Los scores y alertas de sesgo se basan en comparaciones de proporciones y promedios entre grupos demográficos, con umbrales predefinidos inspirados en el estudio de referencia.</p>
-                        </div>
-                    </div>
-                </Card>
-            );
-            default: return <div>Seleccione una vista</div>;
-        }
-    };
-    
-    const showFilters = ['demographics', 'dispositions', 'sentencing', 'duration', 'intersectional'].includes(activeView);
-
-    return (
-        <div id="pdf-content">
-            {showFilters && (
-                <Card title="Filtros Interactivos" className="mb-6 no-print">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Rango de Años ({filters.yearRange[0]} - {filters.yearRange[1]})</label>
-                            <div className="flex space-x-2">
-                                <input type="range" min={yearExtent[0]} max={yearExtent[1]} value={filters.yearRange[0]} onChange={(e) => setFilters(f => ({...f, yearRange: [Math.min(parseInt(e.target.value), f.yearRange[1]-1), f.yearRange[1]]}))} className="w-full" />
-                                <input type="range" min={yearExtent[0]} max={yearExtent[1]} value={filters.yearRange[1]} onChange={(e) => setFilters(f => ({...f, yearRange: [f.yearRange[0], Math.max(parseInt(e.target.value), f.yearRange[0]+1)]}))} className="w-full" />
-                            </div>
-                        </div>
-                        <div>
-                            <label htmlFor="offense" className="block text-sm font-medium text-gray-700">Categoría de Delito</label>
-                            <select id="offense" value={filters.offenseCategory} onChange={e => setFilters({...filters, offenseCategory: e.target.value})} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md">
-                                <option>All</option>
-                                {uniqueValues.offenseCategories.map(c => <option key={c}>{c}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                             <label htmlFor="city" className="block text-sm font-medium text-gray-700">Ciudad del Incidente</label>
-                            <select id="city" value={filters.incidentCity} onChange={e => setFilters({...filters, incidentCity: e.target.value})} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md">
-                                <option>All</option>
-                                {uniqueValues.incidentCities.map(c => <option key={c}>{c}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                </Card>
-            )}
-            {renderContent()}
-        </div>
-    );
-};
-
 
 // Sub-components for different views
 
@@ -417,7 +202,6 @@ const DemographicAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ 
     );
 };
 
-// FIX: Replaced incomplete component with a full implementation that returns JSX.
 const BiasSummaryDashboard: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
     // Simplified scoring logic for demonstration
     const scores = useMemo(() => {
@@ -506,7 +290,6 @@ const BiasSummaryDashboard: React.FC<{ data: CaseData[]; thresholds: any }> = ({
     );
 };
 
-// FIX: Added missing component definitions.
 const DispositionAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
     const dispositionByRace = useMemo(() => {
         if (!data || data.length === 0) return [];
@@ -568,7 +351,6 @@ const SentencingAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ d
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        {/* FIX: Moved unit prop from Tooltip to Bar component to correctly pass it to the tooltip payload. */}
                         <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="avgSentence" name="Sentencia Promedio" unit=" años">
                             {avgSentenceByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
@@ -602,7 +384,6 @@ const DurationAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ dat
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        {/* FIX: Moved unit prop from Tooltip to Bar component to correctly pass it to the tooltip payload. */}
                         <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="avgDuration" name="Duración Promedio" unit=" días">
                             {avgDurationByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
@@ -655,5 +436,220 @@ const IntersectionalAnalysis: React.FC<{ data: CaseData[] }> = ({ data }) => {
     );
 };
 
-// FIX: Added default export to resolve import error in App.tsx.
+// FIX: Added DashboardProps interface to resolve TypeScript error.
+interface DashboardProps {
+    data: CaseData[];
+    activeView: View;
+    uniqueValues: {
+        offenseCategories: string[];
+        incidentCities: string[];
+    };
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues }) => {
+    
+    const yearExtent = useMemo((): [number, number] => {
+        const currentYear = new Date().getFullYear();
+        const defaultRange: [number, number] = [currentYear - 20, currentYear];
+
+        if (!data || data.length === 0) {
+            return defaultRange;
+        }
+        
+        const years = data
+            .map(d => d.FECHA_RECEPCION ? d.FECHA_RECEPCION.getFullYear() : null)
+            .filter((y): y is number => y !== null && !isNaN(y));
+
+        if (years.length === 0) {
+            return defaultRange;
+        }
+        
+        const minYear = Math.min(...years);
+        const maxYear = Math.max(...years);
+
+        if (!isFinite(minYear) || !isFinite(maxYear)) {
+            return defaultRange;
+        }
+
+        return [minYear, maxYear];
+    }, [data]);
+
+    const [filters, setFilters] = useState<FilterState>({
+        yearRange: yearExtent,
+        offenseCategory: 'All',
+        incidentCity: 'All',
+    });
+
+    // This effect synchronizes the filter's year range with the data's actual year range.
+    // It prevents crashes when new data is loaded by ensuring the range slider values
+    // are always within the min/max bounds.
+    useEffect(() => {
+        setFilters(f => ({ ...f, yearRange: yearExtent }));
+    }, [yearExtent]);
+    
+    const [thresholds, setThresholds] = useState({
+        representation: { under: 10, over: 60 },
+        disposition: 15,
+        sentencing: 1.5,
+        duration: 60,
+    });
+
+    const filteredData = useMemo(() => {
+        return data.filter(d => {
+            const year = d.FECHA_RECEPCION.getFullYear();
+            const yearMatch = year >= filters.yearRange[0] && year <= filters.yearRange[1];
+            const offenseMatch = filters.offenseCategory === 'All' || d.CATEGORIA_DELITO === filters.offenseCategory;
+            const cityMatch = filters.incidentCity === 'All' || d.CIUDAD_INCIDENTE === filters.incidentCity;
+            return yearMatch && offenseMatch && cityMatch;
+        });
+    }, [data, filters]);
+
+    const handleExportPDF = () => {
+        const input = document.getElementById('pdf-content');
+        if (input) {
+            const sidebar = document.querySelector('.no-print');
+            (sidebar as HTMLElement).style.display = 'none';
+
+            window.html2canvas(input, { scale: 2 }).then((canvas: any) => {
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({
+                    orientation: 'p',
+                    unit: 'px',
+                    format: 'a4'
+                });
+
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                const ratio = canvasWidth / canvasHeight;
+                const width = pdfWidth;
+                const height = width / ratio;
+                
+                let position = 0;
+                let heightLeft = height;
+
+                pdf.addImage(imgData, 'PNG', 0, position, width, height);
+                heightLeft -= pdfHeight;
+
+                while (heightLeft > 0) {
+                    position = position - pdfHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, width, height);
+                    heightLeft -= pdfHeight;
+                }
+
+                pdf.save('informe_sesgos.pdf');
+                (sidebar as HTMLElement).style.display = 'flex';
+            });
+        }
+    };
+    
+     const handleExportCSV = (summary: boolean) => {
+        if (filteredData.length === 0) {
+            alert("No hay datos para exportar. Por favor, ajuste los filtros.");
+            return;
+        }
+
+        let csvContent = "data:text/csv;charset=utf-8,";
+        let rows: any[] = [];
+        let filename = 'datos_procesados.csv';
+
+        if(summary) {
+            const races = [...new Set(filteredData.map(d => d.RAZA))];
+            rows.push(['Raza', 'Total Casos', 'Sentencia Promedio (Años)']);
+            races.forEach(race => {
+                const groupData = filteredData.filter(d => d.RAZA === race);
+                const avgSentence = groupData.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / groupData.length;
+                rows.push([race, groupData.length, avgSentence.toFixed(2)]);
+            });
+            filename = 'resumen_sesgos.csv';
+        } else {
+            rows = [Object.keys(filteredData[0])];
+            filteredData.forEach(item => {
+                rows.push(Object.values(item).map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : v));
+            });
+        }
+        
+        rows.forEach(function(rowArray) {
+            let row = rowArray.join(",");
+            csvContent += row + "\r\n";
+        });
+        
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+
+    const renderContent = () => {
+        switch (activeView) {
+            case 'home': return <DataSummary data={data} />;
+            case 'summary': return <BiasSummaryDashboard data={filteredData} thresholds={thresholds} />;
+            case 'demographics': return <DemographicAnalysis data={filteredData} thresholds={thresholds} />;
+            case 'dispositions': return <DispositionAnalysis data={filteredData} thresholds={thresholds} />;
+            case 'sentencing': return <SentencingAnalysis data={filteredData} thresholds={thresholds} />;
+            case 'duration': return <DurationAnalysis data={filteredData} thresholds={thresholds} />;
+            case 'intersectional': return <IntersectionalAnalysis data={filteredData} />;
+            case 'reports': return (
+                <Card title="Generación de Informes">
+                    <div className="space-y-4">
+                        <p>Exporte los análisis actuales y datos procesados.</p>
+                        <div className="flex space-x-4">
+                            <button onClick={handleExportPDF} className="bg-primary text-white font-bold py-2 px-4 rounded hover:bg-blue-600 transition-colors">Exportar a PDF</button>
+                            <button onClick={() => handleExportCSV(false)} className="bg-green-600 text-white font-bold py-2 px-4 rounded hover:bg-green-700 transition-colors">Exportar Datos Procesados (CSV)</button>
+                            <button onClick={() => handleExportCSV(true)} className="bg-green-600 text-white font-bold py-2 px-4 rounded hover:bg-green-700 transition-colors">Exportar Resumen (CSV)</button>
+                        </div>
+                        <div className="pt-8 text-sm text-gray-600">
+                            <h4 className="font-bold mb-2">Referencias</h4>
+                            <p><strong>Estudio de Referencia:</strong> Sargent, J., & Weber, M. (2022). <i>Identifying biases in legal data: An algorithmic fairness perspective</i>. arXiv preprint arXiv:2208.09946.</p>
+                            <p className="mt-2"><strong>Metodología:</strong> Los scores y alertas de sesgo se basan en comparaciones de proporciones y promedios entre grupos demográficos, con umbrales predefinidos inspirados en el estudio de referencia.</p>
+                        </div>
+                    </div>
+                </Card>
+            );
+            default: return <div>Seleccione una vista</div>;
+        }
+    };
+    
+    const showFilters = ['demographics', 'dispositions', 'sentencing', 'duration', 'intersectional'].includes(activeView);
+
+    return (
+        <div id="pdf-content">
+            {showFilters && (
+                <Card title="Filtros Interactivos" className="mb-6 no-print">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Rango de Años ({filters.yearRange[0]} - {filters.yearRange[1]})</label>
+                            <div className="flex space-x-2">
+                                <input type="range" min={yearExtent[0]} max={yearExtent[1]} value={filters.yearRange[0]} onChange={(e) => setFilters(f => ({...f, yearRange: [Math.min(parseInt(e.target.value), f.yearRange[1]-1), f.yearRange[1]]}))} className="w-full" />
+                                <input type="range" min={yearExtent[0]} max={yearExtent[1]} value={filters.yearRange[1]} onChange={(e) => setFilters(f => ({...f, yearRange: [f.yearRange[0], Math.max(parseInt(e.target.value), f.yearRange[0]+1)]}))} className="w-full" />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="offense" className="block text-sm font-medium text-gray-700">Categoría de Delito</label>
+                            <select id="offense" value={filters.offenseCategory} onChange={e => setFilters({...filters, offenseCategory: e.target.value})} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md">
+                                <option>All</option>
+                                {uniqueValues.offenseCategories.map(c => <option key={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                             <label htmlFor="city" className="block text-sm font-medium text-gray-700">Ciudad del Incidente</label>
+                            <select id="city" value={filters.incidentCity} onChange={e => setFilters({...filters, incidentCity: e.target.value})} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md">
+                                <option>All</option>
+                                {uniqueValues.incidentCities.map(c => <option key={c}>{c}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                </Card>
+            )}
+            {renderContent()}
+        </div>
+    );
+};
+
 export default Dashboard;

@@ -95,9 +95,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, error }) => {
             )}
 
             <div className="mt-8 text-left max-w-lg text-gray-400 text-sm p-4 bg-gray-800 rounded-lg">
-                <h3 className="font-bold text-white mb-2">Columnas Requeridas (o equivalentes en inglés):</h3>
+                <h3 className="font-bold text-white mb-2">Columnas Requeridas:</h3>
                 <ul className="grid grid-cols-2 gap-x-4 gap-y-1 list-disc list-inside">
                     <li>ID_CASO</li>
+                    <li>FECHA_RECEPCION</li>
                     <li>RAZA</li>
                     <li>GENERO</li>
                     <li>EDAD_AL_INCIDENTE</li>
@@ -106,7 +107,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, error }) => {
                     <li>TIPO_SENTENCIA</li>
                     <li>TERMINO_COMPROMISO</li>
                     <li>UNIDAD_COMPROMISO</li>
-                    <li>DURACION_CASO...</li>
+                    <li>DURACION_CASO_EN_DIAS</li>
                 </ul>
             </div>
 
