@@ -2,7 +2,8 @@
 // For a larger application, these sections would be split into separate files.
 
 // FIX: Added useState and useMemo to the import from React to fix 'Cannot find name' errors.
-import React, { useMemo, useState } from 'react';
+// FIX: Added useEffect to handle state synchronization and prevent render crashes.
+import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { CaseData, View, FilterState } from '../types';
 import Card from './Card';
@@ -55,17 +56,30 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues }) => {
     
-    const yearExtent = useMemo(() => {
+    const yearExtent = useMemo((): [number, number] => {
+        const currentYear = new Date().getFullYear();
+        const defaultRange: [number, number] = [currentYear - 20, currentYear];
+
         if (!data || data.length === 0) {
-            const currentYear = new Date().getFullYear();
-            return [currentYear - 20, currentYear] as [number, number];
+            return defaultRange;
         }
-        const years = data.map(d => d.FECHA_RECEPCION.getFullYear()).filter(y => !isNaN(y));
+        
+        const years = data
+            .map(d => d.FECHA_RECEPCION ? d.FECHA_RECEPCION.getFullYear() : null)
+            .filter((y): y is number => y !== null && !isNaN(y));
+
         if (years.length === 0) {
-            const currentYear = new Date().getFullYear();
-            return [currentYear - 20, currentYear] as [number, number];
+            return defaultRange;
         }
-        return [Math.min(...years), Math.max(...years)] as [number, number];
+        
+        const minYear = Math.min(...years);
+        const maxYear = Math.max(...years);
+
+        if (!isFinite(minYear) || !isFinite(maxYear)) {
+            return defaultRange;
+        }
+
+        return [minYear, maxYear];
     }, [data]);
 
     const [filters, setFilters] = useState<FilterState>({
@@ -73,6 +87,13 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
         offenseCategory: 'All',
         incidentCity: 'All',
     });
+
+    // This effect synchronizes the filter's year range with the data's actual year range.
+    // It prevents crashes when new data is loaded by ensuring the range slider values
+    // are always within the min/max bounds.
+    useEffect(() => {
+        setFilters(f => ({ ...f, yearRange: yearExtent }));
+    }, [yearExtent]);
     
     const [thresholds, setThresholds] = useState({
         representation: { under: 10, over: 60 },
