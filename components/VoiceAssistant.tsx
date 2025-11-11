@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
-// FIX: Removed unexported 'LiveSession' type.
+import React, { useState, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAI_Blob } from '@google/genai';
 import { CaseData } from '../types';
 import { encode, decode, decodeAudioData, createDataSummaryForAI } from '../utils';
@@ -15,7 +14,6 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ data }) => {
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [conversation, setConversation] = useState<{ speaker: 'user' | 'model', text: string }[]>([]);
 
-    // FIX: Changed type from `Promise<LiveSession>` to `Promise<any>` because LiveSession is not an exported type.
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
     const outputAudioContextRef = useRef<AudioContext | null>(null);

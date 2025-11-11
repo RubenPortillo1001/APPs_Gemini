@@ -1,8 +1,6 @@
 // This is a large component containing all analysis logic and views.
 // For a larger application, these sections would be split into separate files.
 
-// FIX: Added useState and useMemo to the import from React to fix 'Cannot find name' errors.
-// FIX: Added useEffect to handle state synchronization and prevent render crashes.
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { CaseData, View, FilterState } from '../types';
@@ -194,7 +192,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
             case 'home': return <DataSummary data={data} />;
             case 'summary': return <BiasSummaryDashboard data={filteredData} thresholds={thresholds} />;
             case 'demographics': return <DemographicAnalysis data={filteredData} thresholds={thresholds} />;
-// FIX: Added component definitions to resolve 'Cannot find name' errors.
             case 'dispositions': return <DispositionAnalysis data={filteredData} thresholds={thresholds} />;
             case 'sentencing': return <SentencingAnalysis data={filteredData} thresholds={thresholds} />;
             case 'duration': return <DurationAnalysis data={filteredData} thresholds={thresholds} />;
@@ -417,7 +414,6 @@ const DemographicAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ 
     );
 };
 
-// FIX: Replaced incomplete component with a full implementation that returns JSX.
 const BiasSummaryDashboard: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
     // Simplified scoring logic for demonstration
     const scores = useMemo(() => {
@@ -506,7 +502,6 @@ const BiasSummaryDashboard: React.FC<{ data: CaseData[]; thresholds: any }> = ({
     );
 };
 
-// FIX: Added missing component definitions.
 const DispositionAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
     const dispositionByRace = useMemo(() => {
         if (!data || data.length === 0) return [];
@@ -568,7 +563,6 @@ const SentencingAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ d
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        {/* FIX: Moved unit prop from Tooltip to Bar component to correctly pass it to the tooltip payload. */}
                         <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="avgSentence" name="Sentencia Promedio" unit=" años">
                             {avgSentenceByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
@@ -602,7 +596,6 @@ const DurationAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ dat
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        {/* FIX: Moved unit prop from Tooltip to Bar component to correctly pass it to the tooltip payload. */}
                         <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="avgDuration" name="Duración Promedio" unit=" días">
                             {avgDurationByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
@@ -655,5 +648,4 @@ const IntersectionalAnalysis: React.FC<{ data: CaseData[] }> = ({ data }) => {
     );
 };
 
-// FIX: Added default export to resolve import error in App.tsx.
 export default Dashboard;
