@@ -7,7 +7,7 @@ const standardizeRace = (race: string | undefined): string => {
     if (r.includes('hispanic')) return 'Hispanic';
     if (r.includes('black')) return 'Black';
     if (r.includes('white')) return 'White';
-    if (r.includes('asian')) return 'ASIAN';
+    if (r.includes('asian')) return 'Asian';
     if (r.trim() === '') return 'Unknown';
     // Capitalize first letter for display
     const standardized = r.charAt(0).toUpperCase() + r.slice(1);
@@ -17,9 +17,24 @@ const standardizeRace = (race: string | undefined): string => {
 
 // Main function to parse, clean, and standardize raw CSV data
 export const parseAndCleanData = (csvText: string): { data: CaseData[], error: string | null } => {
-    const parsed = (window as any).d3.csvParse(csvText);
+    if (typeof window === 'undefined' || !(window as any).d3) {
+        return { 
+            data: [], 
+            error: 'La biblioteca de análisis CSV no está disponible. Por favor, recarga la página.' 
+        };
+    }
 
-    if (!parsed.columns || parsed.length === 0) {
+    let parsed;
+    try {
+        parsed = (window as any).d3.csvParse(csvText);
+    } catch (error) {
+        return { 
+            data: [], 
+            error: 'Error al analizar el archivo CSV. Verifica que el formato sea correcto.' 
+        };
+    }
+
+    if (!parsed || !parsed.columns || parsed.length === 0) {
         return { data: [], error: 'El archivo CSV está vacío o tiene un formato incorrecto.' };
     }
 
@@ -46,8 +61,8 @@ export const parseAndCleanData = (csvText: string): { data: CaseData[], error: s
         .filter((duration: number) => !isNaN(duration) && duration >= 0);
 
     const calculateMedian = (arr: number[]): number => {
-        if (arr.length === 0) return 0;
-        const sorted = arr.slice().sort((a, b) => a - b);
+        if (!arr || arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
         return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
     };
@@ -187,6 +202,9 @@ export const createDataSummaryForAI = (data: CaseData[]): string => {
     }
 
     const totalCases = data.length;
+    if (totalCases === 0) {
+        return "No hay datos válidos para resumir.";
+    }
 
     const raceCounts = data.reduce((acc, d) => { acc[d.RAZA] = (acc[d.RAZA] || 0) + 1; return acc; }, {} as Record<string, number>);
     const raceDistribution = Object.entries(raceCounts).map(([race, count]) => `${race}: ${((count / totalCases) * 100).toFixed(1)}%`).join(', ');

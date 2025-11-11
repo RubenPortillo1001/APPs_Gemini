@@ -7,7 +7,7 @@ import { CaseData, View, FilterState } from '../types';
 import Card from './Card';
 import Alert from './Alert';
 import { getAgeGroup } from '../utils';
-import { jsPDF } from "jspdf";
+import jsPDF from "jspdf";
 
 declare global {
     interface Window {
@@ -21,7 +21,7 @@ const RACE_COLORS: { [key: string]: string } = {
     'Black': '#3b82f6',
     'White': '#ef4444',
     'Hispanic': '#f97316',
-    'ASIAN': '#22c55e',
+    'Asian': '#22c55e',
     'Other': '#8b5cf6',
     'Unknown': '#6b7280',
 };
@@ -457,8 +457,16 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
         }
         
         const years = data
-            .map(d => d.FECHA_RECEPCION ? d.FECHA_RECEPCION.getFullYear() : null)
-            .filter((y): y is number => y !== null && !isNaN(y));
+            .map(d => {
+                try {
+                    return d.FECHA_RECEPCION && d.FECHA_RECEPCION instanceof Date 
+                        ? d.FECHA_RECEPCION.getFullYear() 
+                        : null;
+                } catch (e) {
+                    return null;
+                }
+            })
+            .filter((y): y is number => y !== null && !isNaN(y) && y > 1900 && y <= currentYear);
 
         if (years.length === 0) {
             return defaultRange;
@@ -467,7 +475,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
         const minYear = Math.min(...years);
         const maxYear = Math.max(...years);
 
-        if (!isFinite(minYear) || !isFinite(maxYear)) {
+        if (!isFinite(minYear) || !isFinite(maxYear) || minYear === maxYear) {
             return defaultRange;
         }
 
@@ -504,87 +512,120 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
         });
     }, [data, filters]);
 
-    const handleExportPDF = () => {
-        const input = document.getElementById('pdf-content');
-        if (input) {
-            const sidebar = document.querySelector('.no-print');
-            (sidebar as HTMLElement).style.display = 'none';
+    const handleExportPDF = async () => {
+        try {
+            const input = document.getElementById('pdf-content');
+            if (!input) {
+                alert("No se pudo encontrar el contenido para exportar.");
+                return;
+            }
 
-            window.html2canvas(input, { scale: 2 }).then((canvas: any) => {
-                const imgData = canvas.toDataURL('image/png');
-                const pdf = new jsPDF({
-                    orientation: 'p',
-                    unit: 'px',
-                    format: 'a4'
-                });
+            if (!window.html2canvas) {
+                alert("La biblioteca de exportación PDF no está disponible. Por favor, recarga la página.");
+                return;
+            }
 
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = pdf.internal.pageSize.getHeight();
-                const canvasWidth = canvas.width;
-                const canvasHeight = canvas.height;
-                const ratio = canvasWidth / canvasHeight;
-                const width = pdfWidth;
-                const height = width / ratio;
-                
-                let position = 0;
-                let heightLeft = height;
+            const sidebar = document.querySelector('.no-print') as HTMLElement;
+            if (sidebar) sidebar.style.display = 'none';
 
+            const canvas = await window.html2canvas(input, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'p',
+                unit: 'px',
+                format: 'a4'
+            });
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const ratio = canvasWidth / canvasHeight;
+            const width = pdfWidth;
+            const height = width / ratio;
+            
+            let position = 0;
+            let heightLeft = height;
+
+            pdf.addImage(imgData, 'PNG', 0, position, width, height);
+            heightLeft -= pdfHeight;
+
+            while (heightLeft > 0) {
+                position = position - pdfHeight;
+                pdf.addPage();
                 pdf.addImage(imgData, 'PNG', 0, position, width, height);
                 heightLeft -= pdfHeight;
+            }
 
-                while (heightLeft > 0) {
-                    position = position - pdfHeight;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 0, position, width, height);
-                    heightLeft -= pdfHeight;
-                }
-
-                pdf.save('informe_sesgos.pdf');
-                (sidebar as HTMLElement).style.display = 'flex';
-            });
+            pdf.save('informe_sesgos.pdf');
+            if (sidebar) sidebar.style.display = 'flex';
+        } catch (error) {
+            console.error('Error al exportar PDF:', error);
+            alert('Ocurrió un error al exportar el PDF. Por favor, inténtalo de nuevo.');
+            const sidebar = document.querySelector('.no-print') as HTMLElement;
+            if (sidebar) sidebar.style.display = 'flex';
         }
     };
     
-     const handleExportCSV = (summary: boolean) => {
-        if (filteredData.length === 0) {
+    const handleExportCSV = (summary: boolean) => {
+        if (!filteredData || filteredData.length === 0) {
             alert("No hay datos para exportar. Por favor, ajuste los filtros.");
             return;
         }
 
-        let csvContent = "data:text/csv;charset=utf-8,";
-        let rows: any[] = [];
-        let filename = 'datos_procesados.csv';
+        try {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            let rows: any[] = [];
+            let filename = 'datos_procesados.csv';
 
-        if(summary) {
-            const races = [...new Set(filteredData.map(d => d.RAZA))];
-            rows.push(['Raza', 'Total Casos', 'Sentencia Promedio (Años)']);
-            races.forEach(race => {
-                const groupData = filteredData.filter(d => d.RAZA === race);
-                const avgSentence = groupData.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / groupData.length;
-                rows.push([race, groupData.length, avgSentence.toFixed(2)]);
+            if (summary) {
+                const races = [...new Set(filteredData.map(d => d.RAZA))];
+                rows.push(['Raza', 'Total Casos', 'Sentencia Promedio (Años)']);
+                races.forEach(race => {
+                    const groupData = filteredData.filter(d => d.RAZA === race);
+                    const validSentences = groupData.filter(d => 
+                        d.SENTENCE_IN_YEARS !== undefined && 
+                        d.SENTENCE_IN_YEARS < 99
+                    );
+                    const avgSentence = validSentences.length > 0
+                        ? validSentences.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / validSentences.length
+                        : 0;
+                    rows.push([race, groupData.length, avgSentence.toFixed(2)]);
+                });
+                filename = 'resumen_sesgos.csv';
+            } else {
+                if (filteredData.length === 0) {
+                    alert("No hay datos para exportar.");
+                    return;
+                }
+                rows = [Object.keys(filteredData[0])];
+                filteredData.forEach(item => {
+                    rows.push(Object.values(item).map(v => {
+                        if (v instanceof Date) {
+                            return `"${v.toISOString()}"`;
+                        }
+                        return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : String(v);
+                    }));
+                });
+            }
+            
+            rows.forEach(function(rowArray) {
+                let row = rowArray.join(",");
+                csvContent += row + "\r\n";
             });
-            filename = 'resumen_sesgos.csv';
-        } else {
-            rows = [Object.keys(filteredData[0])];
-            filteredData.forEach(item => {
-                rows.push(Object.values(item).map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : v));
-            });
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Error al exportar CSV:', error);
+            alert('Ocurrió un error al exportar el CSV. Por favor, inténtalo de nuevo.');
         }
-        
-        rows.forEach(function(rowArray) {
-            let row = rowArray.join(",");
-            csvContent += row + "\r\n";
-        });
-        
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
     };
-
 
     const renderContent = () => {
         switch (activeView) {

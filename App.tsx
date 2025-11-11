@@ -16,19 +16,30 @@ const App: React.FC = () => {
     const [screen, setScreen] = useState<Screen>('upload');
 
     useEffect(() => {
-        // Start with a small delay to allow the upload screen to render first, improving user experience.
-        setTimeout(() => {
-            const { data: parsedData, error: parseError } = parseAndCleanData(defaultDataCSV);
-            if (parseError) {
-                setError(parseError);
+        // Start with a small delay to allow the upload screen to render first
+        const timeoutId = setTimeout(() => {
+            try {
+                const { data: parsedData, error: parseError } = parseAndCleanData(defaultDataCSV);
+                if (parseError) {
+                    console.error('Error loading default data:', parseError);
+                    setError(parseError);
+                    setData(null);
+                    setScreen('upload'); 
+                } else {
+                    setData(parsedData);
+                    setError(null);
+                    setScreen('dashboard');
+                }
+            } catch (error) {
+                console.error('Unexpected error loading default data:', error);
+                setError('Error inesperado al cargar los datos por defecto');
                 setData(null);
-                setScreen('upload'); 
-            } else {
-                setData(parsedData);
-                setError(null);
-                setScreen('dashboard');
+                setScreen('upload');
             }
         }, 100);
+
+        // Cleanup function
+        return () => clearTimeout(timeoutId);
     }, []);
 
     const handleDataLoaded = (csvText: string) => {

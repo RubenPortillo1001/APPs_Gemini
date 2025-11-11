@@ -12,12 +12,25 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, error }) => {
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
+            if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+                alert('Por favor, selecciona un archivo CSV válido.');
+                return;
+            }
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                alert('El archivo es demasiado grande. El tamaño máximo es 10MB.');
+                return;
+            }
             setIsLoading(true);
             setFileName(file.name);
             const reader = new FileReader();
             reader.onload = (e) => {
                 const text = e.target?.result as string;
                 onDataLoaded(text);
+                setIsLoading(false);
+            };
+            reader.onerror = () => {
+                alert('Error al leer el archivo. Por favor, inténtalo de nuevo.');
                 setIsLoading(false);
             };
             reader.readAsText(file);
@@ -31,13 +44,26 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, error }) => {
     const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         const file = event.dataTransfer.files?.[0];
-        if (file && file.type === "text/csv") {
+        if (file) {
+            if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+                alert('Por favor, arrastra un archivo CSV válido.');
+                return;
+            }
+            const maxSize = 10 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert('El archivo es demasiado grande. El tamaño máximo es 10MB.');
+                return;
+            }
             setIsLoading(true);
             setFileName(file.name);
             const reader = new FileReader();
             reader.onload = (e) => {
                 const text = e.target?.result as string;
                 onDataLoaded(text);
+                setIsLoading(false);
+            };
+            reader.onerror = () => {
+                alert('Error al leer el archivo. Por favor, inténtalo de nuevo.');
                 setIsLoading(false);
             };
             reader.readAsText(file);
