@@ -51,11 +51,37 @@ export const parseAndCleanData = (csvText: string): { data: CaseData[], error: s
         return { data: [], error: `Faltan las siguientes columnas obligatorias: ${missingColumns.join(', ')}` };
     }
 
+    // Pass 1: Pre-calculate medians for imputation to avoid distortion from using 0
+    const validAges = parsed
+        .map((row: any) => parseInt(row[detectedMap.AGE_AT_INCIDENT], 10))
+        .filter((age: number) => !isNaN(age) && age > 0 && age < 120); // Basic sanity check for age
+
+    const validDurations = parsed
+        .map((row: any) => parseInt(String(row[detectedMap.LENGTH_OF_CASE_in_Days]).replace(/,/g, ''), 10))
+        .filter((duration: number) => !isNaN(duration) && duration >= 0);
+
+    const calculateMedian = (arr: number[]): number => {
+        if (arr.length === 0) return 0; // Fallback, though should be rare with real data
+        const sorted = arr.slice().sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    };
+
+    const medianAge = Math.round(calculateMedian(validAges));
+    const medianDuration = Math.round(calculateMedian(validDurations));
+
     const cleanedData: CaseData[] = parsed.map((row: any) => {
         let race = row[detectedMap.RACE] || 'Unknown';
         if (race.toLowerCase().includes('hispanic')) {
             race = 'Hispanic';
         }
+        
+        // Use medians for missing numerical data
+        const parsedAge = parseInt(row[detectedMap.AGE_AT_INCIDENT], 10);
+        const ageAtIncident = !isNaN(parsedAge) && parsedAge > 0 && parsedAge < 120 ? parsedAge : medianAge;
+        
+        const parsedDuration = parseInt(String(row[detectedMap.LENGTH_OF_CASE_in_Days]).replace(/,/g, ''), 10);
+        const caseDuration = !isNaN(parsedDuration) && parsedDuration >= 0 ? parsedDuration : medianDuration;
 
         const caseData: CaseData = {
             ID_CASO: row[detectedMap.CASE_ID],
@@ -63,13 +89,13 @@ export const parseAndCleanData = (csvText: string): { data: CaseData[], error: s
             FECHA_RECEPCION: new Date(row[detectedMap.RECEIVED_DATE]),
             RAZA: race,
             GENERO: row[detectedMap.GENDER] || 'Unknown',
-            EDAD_AL_INCIDENTE: parseInt(row[detectedMap.AGE_AT_INCIDENT], 10) || 0,
+            EDAD_AL_INCIDENTE: ageAtIncident, // Use imputed value
             CATEGORIA_DELITO: row[detectedMap.OFFENSE_CATEGORY] || 'Unknown',
             DISPOSICION_CARGO: row[detectedMap.CHARGE_DISPOSITION] || 'Unknown',
             TIPO_SENTENCIA: row[detectedMap.SENTENCE_TYPE] || 'Unknown',
             TERMINO_COMPROMISO: row[detectedMap.COMMITMENT_TERM],
             UNIDAD_COMPROMISO: row[detectedMap.COMMITMENT_UNIT] || '',
-            DURACION_CASO_EN_DIAS: parseInt(String(row[detectedMap.LENGTH_OF_CASE_in_Days]).replace(/,/g, ''), 10) || 0,
+            DURACION_CASO_EN_DIAS: caseDuration, // Use imputed value
             CIUDAD_INCIDENTE: row[detectedMap.INCIDENT_CITY] || 'Unknown',
             JUEZ_SENTENCIA: row[detectedMap.SENTENCE_JUDGE] || 'Unknown',
         };
@@ -166,7 +192,11 @@ export const createDataSummaryForAI = (data: CaseData[]): string => {
     const offenseCounts = data.reduce((acc, d) => { acc[d.CATEGORIA_DELITO] = (acc[d.CATEGORIA_DELITO] || 0) + 1; return acc; }, {} as Record<string, number>);
     const topOffenses = Object.entries(offenseCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([offense, count]) => `${offense} (${count} casos)`).join(', ');
 
-    const avgSentence = data.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / data.filter(d => d.SENTENCE_IN_YEARS !== undefined).length;
+    const sentencedCases = data.filter(d => d.SENTENCE_IN_YEARS !== undefined);
+    const avgSentence = sentencedCases.length > 0
+        ? sentencedCases.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / sentencedCases.length
+        : 0;
+    
     const avgDuration = data.reduce((acc, d) => acc + d.DURACION_CASO_EN_DIAS, 0) / totalCases;
 
     return `

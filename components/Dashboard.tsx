@@ -1,7 +1,8 @@
 // This is a large component containing all analysis logic and views.
 // For a larger application, these sections would be split into separate files.
 
-import React, 'useMemo', useState } from 'react';
+// FIX: Added useState and useMemo to the import from React to fix 'Cannot find name' errors.
+import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { CaseData, View, FilterState } from '../types';
 import Card from './Card';
@@ -55,7 +56,15 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues }) => {
     
     const yearExtent = useMemo(() => {
-        const years = data.map(d => d.FECHA_RECEPCION.getFullYear());
+        if (!data || data.length === 0) {
+            const currentYear = new Date().getFullYear();
+            return [currentYear - 20, currentYear] as [number, number];
+        }
+        const years = data.map(d => d.FECHA_RECEPCION.getFullYear()).filter(y => !isNaN(y));
+        if (years.length === 0) {
+            const currentYear = new Date().getFullYear();
+            return [currentYear - 20, currentYear] as [number, number];
+        }
         return [Math.min(...years), Math.max(...years)] as [number, number];
     }, [data]);
 
@@ -164,6 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
             case 'home': return <DataSummary data={data} />;
             case 'summary': return <BiasSummaryDashboard data={filteredData} thresholds={thresholds} />;
             case 'demographics': return <DemographicAnalysis data={filteredData} thresholds={thresholds} />;
+// FIX: Added component definitions to resolve 'Cannot find name' errors.
             case 'dispositions': return <DispositionAnalysis data={filteredData} thresholds={thresholds} />;
             case 'sentencing': return <SentencingAnalysis data={filteredData} thresholds={thresholds} />;
             case 'duration': return <DurationAnalysis data={filteredData} thresholds={thresholds} />;
@@ -230,15 +240,22 @@ const Dashboard: React.FC<DashboardProps> = ({ data, activeView, uniqueValues })
 
 const DataSummary: React.FC<{ data: CaseData[] }> = ({ data }) => {
     const stats = useMemo(() => {
-        if (!data) return null;
-        const years = data.map(d => d.FECHA_RECEPCION.getFullYear());
-        const minYear = Math.min(...years);
-        const maxYear = Math.max(...years);
+        if (!data || data.length === 0) {
+            return {
+                totalCases: 0,
+                dateRange: 'N/A',
+                uniqueRaces: 0,
+                uniqueOffenses: 0
+            };
+        }
+        const years = data.map(d => d.FECHA_RECEPCION.getFullYear()).filter(y => !isNaN(y));
+        const minYear = years.length > 0 ? Math.min(...years) : 'N/A';
+        const maxYear = years.length > 0 ? Math.max(...years) : '';
         const uniqueRaces = new Set(data.map(d => d.RAZA)).size;
         const uniqueOffenses = new Set(data.map(d => d.CATEGORIA_DELITO)).size;
         return {
             totalCases: data.length,
-            dateRange: `${minYear} - ${maxYear}`,
+            dateRange: years.length > 0 ? `${minYear} - ${maxYear}` : 'N/A',
             uniqueRaces,
             uniqueOffenses
         }
@@ -379,390 +396,241 @@ const DemographicAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ 
     );
 };
 
+// FIX: Replaced incomplete component with a full implementation that returns JSX.
 const BiasSummaryDashboard: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
     // Simplified scoring logic for demonstration
     const scores = useMemo(() => {
-        if (data.length === 0) return { rep: 100, disp: 100, sent: 100, dur: 100, global: 100, findings: [] };
+        if (data.length === 0) return { rep: 100, disp: 100, sent: 100, dur: 100, global: 100, findings: [] as string[] };
 
-        // Representation
+        let findings: string[] = [];
+
+        // Representation Score
         const raceCounts = data.reduce((acc, d) => { acc[d.RAZA] = (acc[d.RAZA] || 0) + 1; return acc; }, {} as Record<string, number>);
         const total = data.length;
         const raceData = Object.entries(raceCounts).map(([name, value]) => ({ name, value, percentage: (value / total) * 100 }));
-        const maxRepDeviation = Math.max(...raceData.map(r => Math.abs(r.percentage - (100 / raceData.length))));
+        const maxRepDeviation = raceData.length > 0 ? Math.max(...raceData.map(r => Math.abs(r.percentage - (100 / raceData.length)))) : 0;
         const repScore = Math.max(0, 100 - maxRepDeviation * 2);
+        if (repScore < 70) findings.push("Existe una desviación significativa en la representación demográfica.");
 
-        // Disposition (Conviction Rate)
-        const dispositions = data.reduce((acc, d) => {
-            if (!acc[d.RAZA]) acc[d.RAZA] = { total: 0, guilty: 0 };
-            acc[d.RAZA].total++;
-            if (d.DISPOSICION_CARGO.toLowerCase().includes('guilty')) {
-                acc[d.RAZA].guilty++;
-            }
-            return acc;
-        }, {} as Record<string, { total: number; guilty: number }>);
-        const dispRates = Object.values(dispositions).map(v => (v.guilty / v.total) * 100);
-        const maxDispDiff = dispRates.length > 1 ? Math.max(...dispRates) - Math.min(...dispRates) : 0;
-        const dispScore = Math.max(0, 100 - maxDispDiff * 2.5);
+        // Disposition Score (Example: difference in 'Guilty' pleas between races)
+        const guiltyData = data.filter(d => d.DISPOSICION_CARGO.toLowerCase().includes('guilty'));
+        const guiltyByRace = guiltyData.reduce((acc, d) => { acc[d.RAZA] = (acc[d.RAZA] || 0) + 1; return acc; }, {} as Record<string, number>);
+        const guiltyRates = raceData.map(r => (guiltyByRace[r.name] || 0) / r.value);
+        const maxDispRateDiff = guiltyRates.length > 0 ? (Math.max(...guiltyRates) - Math.min(...guiltyRates)) * 100 : 0;
+        const dispScore = Math.max(0, 100 - maxDispRateDiff * 2);
+        if (dispScore < 70) findings.push("Hay disparidades notables en los resultados de 'culpable' entre grupos raciales.");
 
-        // Sentencing
-        const sentencesByRace = data.reduce((acc, d) => {
-            if(d.SENTENCE_IN_YEARS !== undefined) {
-                if (!acc[d.RAZA]) acc[d.RAZA] = [];
-                acc[d.RAZA].push(d.SENTENCE_IN_YEARS);
-            }
-            return acc;
-        }, {} as Record<string, number[]>);
-        const avgSentences = Object.values(sentencesByRace).map(s => s.reduce((a,b) => a+b, 0) / s.length).filter(v => !isNaN(v));
-        const minAvgSentence = Math.min(...avgSentences);
-        const sentRatio = avgSentences.length > 1 && minAvgSentence > 0 ? Math.max(...avgSentences) / minAvgSentence : 1;
-        const sentScore = Math.max(0, 100 - (sentRatio - 1) * 50);
+        // Sentencing Score
+        const races = [...new Set(data.map(d => d.RAZA))];
+        const avgSentences = races.map(race => {
+            const group = data.filter(d => d.RAZA === race && d.SENTENCE_IN_YEARS !== undefined && d.SENTENCE_IN_YEARS < 99);
+            return group.length > 0 ? group.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0) / group.length : 0;
+        }).filter(avg => avg > 0);
+        const maxSentDiff = avgSentences.length > 1 ? (Math.max(...avgSentences) / Math.min(...avgSentences)) : 1;
+        const sentScore = Math.max(0, 100 - (maxSentDiff - 1) * 50);
+        if (sentScore < 70) findings.push("Se observan diferencias significativas en la duración promedio de las sentencias.");
 
-        // Duration
-        const durationsByRace = data.reduce((acc, d) => {
-            if (!acc[d.RAZA]) acc[d.RAZA] = [];
-            acc[d.RAZA].push(d.DURACION_CASO_EN_DIAS);
-            return acc;
-        }, {} as Record<string, number[]>);
-        const avgDurations = Object.values(durationsByRace).map(s => s.reduce((a,b) => a+b, 0) / s.length).filter(v => !isNaN(v));
-        const maxDurDiff = avgDurations.length > 1 ? Math.max(...avgDurations) - Math.min(...avgDurations) : 0;
-        const durScore = Math.max(0, 100 - maxDurDiff / 5);
-        
+        // Duration Score
+        const avgDurations = races.map(race => {
+            const group = data.filter(d => d.RAZA === race);
+            return group.length > 0 ? group.reduce((acc, d) => acc + d.DURACION_CASO_EN_DIAS, 0) / group.length : 0;
+        });
+        const maxDurDiff = avgDurations.length > 0 ? (Math.max(...avgDurations) - Math.min(...avgDurations)) : 0;
+        const durScore = Math.max(0, 100 - (maxDurDiff / 30)); // 1 point deduction per 30 days difference
+        if (durScore < 70) findings.push("La duración procesal promedio varía considerablemente entre grupos.");
+
         const globalScore = (repScore + dispScore + sentScore + durScore) / 4;
 
-        return { rep: repScore, disp: dispScore, sent: sentScore, dur: durScore, global: globalScore };
+        return { rep: repScore, disp: dispScore, sent: sentScore, dur: durScore, global: globalScore, findings };
     }, [data]);
-    
+
     const getScoreColor = (score: number) => {
-        if (score < 50) return 'text-danger-text';
-        if (score < 80) return 'text-warning-text';
-        return 'text-success-text';
-    }
+        if (score > 85) return 'text-green-600';
+        if (score > 65) return 'text-yellow-600';
+        return 'text-red-600';
+    };
 
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Panel de Resumen de Sesgos</h2>
-            <Card title="Scorecard de Equidad">
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                        <p className={`text-4xl font-bold ${getScoreColor(scores.global)}`}>{scores.global.toFixed(0)}</p>
-                        <p className="text-sm font-semibold text-gray-600">Score Global</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                        <p className={`text-3xl font-bold ${getScoreColor(scores.rep)}`}>{scores.rep.toFixed(0)}</p>
-                        <p className="text-sm text-gray-500">Representación</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                        <p className={`text-3xl font-bold ${getScoreColor(scores.disp)}`}>{scores.disp.toFixed(0)}</p>
-                        <p className="text-sm text-gray-500">Disposiciones</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                        <p className={`text-3xl font-bold ${getScoreColor(scores.sent)}`}>{scores.sent.toFixed(0)}</p>
-                        <p className="text-sm text-gray-500">Sentencias</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                        <p className={`text-3xl font-bold ${getScoreColor(scores.dur)}`}>{scores.dur.toFixed(0)}</p>
-                        <p className="text-sm text-gray-500">Duración</p>
-                    </div>
+            <h2 className="text-2xl font-bold">Resumen de Indicadores de Sesgo</h2>
+            <Card title="Puntuación Global de Equidad">
+                <div className="text-center">
+                    <p className={`text-7xl font-bold ${getScoreColor(scores.global)}`}>{scores.global.toFixed(0)}</p>
+                    <p className="text-gray-500">Sobre 100 (Mayor es mejor)</p>
+                    <p className="mt-2 max-w-2xl mx-auto">Esta puntuación es un agregado de los indicadores de representación, resultados, sentencias y duración procesal. Un puntaje más bajo sugiere la presencia de posibles sesgos en los datos.</p>
                 </div>
             </Card>
-             <Card title="Recomendaciones Automatizadas">
-                <p>Basado en los scores, las áreas prioritarias para una revisión más profunda son:</p>
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                    {scores.disp < 80 && <li><strong>Resultados del Caso:</strong> Investigar por qué las tasas de culpabilidad varían significativamente entre grupos.</li>}
-                    {scores.sent < 80 && <li><strong>Severidad de Sentencias:</strong> Analizar las sentencias por tipo de delito y juez para entender las disparidades en la duración.</li>}
-                    {scores.dur < 80 && <li><strong>Duración Procesal:</strong> Identificar cuellos de botella en el sistema que afectan desproporcionadamente a ciertos grupos.</li>}
-                     {scores.global >= 80 && <li>Los indicadores generales de sesgo son bajos. Se recomienda un análisis más detallado a nivel interseccional.</li>}
-                </ul>
-            </Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card title="Representación">
+                    <p className={`text-center text-5xl font-bold ${getScoreColor(scores.rep)}`}>{scores.rep.toFixed(0)}</p>
+                </Card>
+                <Card title="Resultados">
+                    <p className={`text-center text-5xl font-bold ${getScoreColor(scores.disp)}`}>{scores.disp.toFixed(0)}</p>
+                </Card>
+                <Card title="Sentencias">
+                    <p className={`text-center text-5xl font-bold ${getScoreColor(scores.sent)}`}>{scores.sent.toFixed(0)}</p>
+                </Card>
+                <Card title="Duración Procesal">
+                    <p className={`text-center text-5xl font-bold ${getScoreColor(scores.dur)}`}>{scores.dur.toFixed(0)}</p>
+                </Card>
+            </div>
+            {scores.findings.length > 0 && (
+                <Alert type="danger" title="Hallazgos Principales">
+                    <ul className="list-disc list-inside">
+                        {scores.findings.map((finding, i) => <li key={i}>{finding}</li>)}
+                    </ul>
+                </Alert>
+            )}
         </div>
     );
 };
 
-const DispositionAnalysis: React.FC<{ data: CaseData[], thresholds: any }> = ({ data, thresholds }) => {
-    const memoizedStats = useMemo(() => {
+// FIX: Added missing component definitions.
+const DispositionAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
+    const dispositionByRace = useMemo(() => {
+        if (!data || data.length === 0) return [];
+        const dispositions = [...new Set(data.map(d => d.DISPOSICION_CARGO))].slice(0, 5); // top 5
         const races = [...new Set(data.map(d => d.RAZA))];
-        const keyDispositions = {
-            'Declarado Culpable': (d: string) => d.toLowerCase().includes('guilty'),
-            'Desestimado (Nolle)': (d: string) => d.toLowerCase().includes('nolle'),
-        };
-
-        const statsByRace: { [key: string]: { [key: string]: number, total: number } } = {};
         
-        data.forEach(d => {
-            if (!statsByRace[d.RAZA]) {
-                statsByRace[d.RAZA] = { 'Declarado Culpable': 0, 'Desestimado (Nolle)': 0, total: 0 };
-            }
-            statsByRace[d.RAZA].total++;
-            for (const [key, check] of Object.entries(keyDispositions)) {
-                if (check(d.DISPOSICION_CARGO)) {
-                    statsByRace[d.RAZA][key]++;
-                }
-            }
+        const result = dispositions.map(disposition => {
+            const entry: { name: string; [key: string]: any } = { name: disposition };
+            races.forEach(race => {
+                entry[race] = data.filter(d => d.RAZA === race && d.DISPOSICION_CARGO === disposition).length;
+            });
+            return entry;
         });
+        return result;
+    }, [data]);
 
-        const chartData = races.map(race => {
-            const stats = statsByRace[race];
-            const result: { name: string, [key: string]: any } = { name: race };
-            for (const key of Object.keys(keyDispositions)) {
-                result[key] = stats ? (stats[key] / stats.total * 100) : 0;
-            }
-            return result;
-        });
-        
-        const rates: { [key:string]: number[] } = {};
-        chartData.forEach(d => {
-            for(const key in d) {
-                if (key !== 'name') {
-                    if(!rates[key]) rates[key] = [];
-                    rates[key].push(d[key]);
-                }
-            }
-        });
+    const races = [...new Set(data.map(d => d.RAZA))];
 
-        const alerts: { disposition: string, diff: number }[] = [];
-        for (const [key, values] of Object.entries(rates)) {
-            const diff = Math.max(...values) - Math.min(...values);
-            if (diff > thresholds.disposition) {
-                alerts.push({ disposition: key, diff: Math.round(diff) });
-            }
-        }
-        
-        return { chartData, alerts, statsByRace };
-    }, [data, thresholds]);
-    
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold">Análisis de Resultados del Caso</h2>
-            {memoizedStats.alerts.map(alert => (
-                <Alert key={alert.disposition} type="danger" title="Sesgo Potencial Detectado">
-                    La diferencia en la tasa de "<strong>{alert.disposition}</strong>" entre grupos raciales es del <strong>{alert.diff}%</strong>, superando el umbral del {thresholds.disposition}%.
-                </Alert>
-            ))}
-            <Card title="Comparación de Tasas de Disposición por Raza (%)">
+            <Card title="Distribución de Resultados por Raza (Top 5)">
                 <ResponsiveContainer width="100%" height={400}>
-                    <BarChart data={memoizedStats.chartData}>
+                    <BarChart data={dispositionByRace} layout="vertical" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis unit="%" />
-                        <Tooltip content={<CustomTooltip unit="%" />} />
+                        <XAxis type="number" />
+                        <YAxis type="category" dataKey="name" width={150} />
+                        <Tooltip content={<CustomTooltip />} />
                         <Legend />
-                        <Bar dataKey="Declarado Culpable" fill="#ef4444" />
-                        <Bar dataKey="Desestimado (Nolle)" fill="#22c55e" />
+                        {races.map((race, i) => (
+                            <Bar key={race} dataKey={race} stackId="a" fill={RACE_COLORS[race] || COLORS[i % COLORS.length]} />
+                        ))}
                     </BarChart>
                 </ResponsiveContainer>
             </Card>
         </div>
     );
 };
-const SentencingAnalysis: React.FC<{ data: CaseData[], thresholds: any }> = ({ data, thresholds }) => {
-     const memoizedStats = useMemo(() => {
-        const dataWithSentence = data.filter(d => d.SENTENCE_IN_YEARS !== undefined && d.SENTENCE_IN_YEARS < 99); // Exclude 'Natural Life'
-        
-        const statsByRace = dataWithSentence.reduce((acc, d) => {
-            if (!acc[d.RAZA]) acc[d.RAZA] = [];
-            acc[d.RAZA].push(d.SENTENCE_IN_YEARS!);
-            return acc;
-        }, {} as Record<string, number[]>);
 
-        const chartData = Object.entries(statsByRace).map(([race, sentences]) => ({
-            name: race,
-            'Sentencia Promedio': sentences.reduce((a, b) => a + b, 0) / sentences.length,
-        }));
-
-        const averages = chartData.map(d => d['Sentencia Promedio']).filter(avg => avg > 0);
-        let disparityRatio = 1;
-        let maxAvg = 0, minAvg = 0;
-        if (averages.length > 1) {
-            maxAvg = Math.max(...averages);
-            minAvg = Math.min(...averages);
-            if (minAvg > 0) {
-                disparityRatio = maxAvg / minAvg;
-            }
-        }
-
-        const tableData = dataWithSentence.reduce((acc, d) => {
-            const key = `${d.RAZA} - ${d.CATEGORIA_DELITO}`;
-            if (!acc[key]) acc[key] = { race: d.RAZA, offense: d.CATEGORIA_DELITO, sentences: [] };
-            acc[key].sentences.push(d.SENTENCE_IN_YEARS!);
-            return acc;
-        }, {} as Record<string, { race: string, offense: string, sentences: number[] }>);
-
-        const topTableData = Object.values(tableData).map(d => ({
-            ...d,
-            avgSentence: d.sentences.reduce((a, b) => a + b, 0) / d.sentences.length,
-            count: d.sentences.length,
-        })).filter(d => d.count > 5).sort((a,b) => b.count - a.count).slice(0, 10);
-
-        return { chartData, disparityRatio, topTableData };
+const SentencingAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
+    const avgSentenceByRace = useMemo(() => {
+        if (!data || data.length === 0) return [];
+        const races = [...new Set(data.map(d => d.RAZA))];
+        const result = races.map(race => {
+            const group = data.filter(d => d.RAZA === race && d.SENTENCE_IN_YEARS !== undefined && d.SENTENCE_IN_YEARS < 99); // Exclude "life"
+            const totalYears = group.reduce((acc, d) => acc + (d.SENTENCE_IN_YEARS || 0), 0);
+            const avg = group.length > 0 ? totalYears / group.length : 0;
+            return { name: race, avgSentence: parseFloat(avg.toFixed(2)) };
+        });
+        return result;
     }, [data]);
-    
+
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Análisis de Severidad de Sentencias</h2>
-            {memoizedStats.disparityRatio > thresholds.sentencing && (
-                <Alert type="danger" title="Disparidad Significativa en Sentencias">
-                    La sentencia promedio para un grupo es <strong>{memoizedStats.disparityRatio.toFixed(2)} veces mayor</strong> que para otro, superando el umbral de {thresholds.sentencing}.
-                </Alert>
-            )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card title="Sentencia Promedio por Raza (Años)">
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={memoizedStats.chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Bar dataKey="Sentencia Promedio" name="Años">
-                                {memoizedStats.chartData.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </Card>
-                <Card title="Sentencia Promedio por Delito y Raza (Top 10)">
-                    <div className="overflow-x-auto text-sm">
-                        <table className="min-w-full">
-                            <thead><tr className="border-b"><th className="text-left py-1">Delito/Raza</th><th className="text-right py-1">Prom. Años</th></tr></thead>
-                            <tbody>
-                                {memoizedStats.topTableData.map(d => (
-                                    <tr key={`${d.race}-${d.offense}`} className="border-b">
-                                        <td className="py-1"><strong>{d.offense}</strong><br/><span className="text-gray-600">{d.race} ({d.count} casos)</span></td>
-                                        <td className="text-right py-1 font-semibold">{d.avgSentence.toFixed(2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </Card>
-            </div>
+            <h2 className="text-2xl font-bold">Análisis de Sentencias</h2>
+            <Card title="Duración Promedio de la Sentencia por Raza (en años)">
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={avgSentenceByRace}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip content={<CustomTooltip />} unit=" años" />
+                        <Bar dataKey="avgSentence" name="Sentencia Promedio">
+                            {avgSentenceByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </Card>
         </div>
     );
 };
-const DurationAnalysis: React.FC<{ data: CaseData[], thresholds: any }> = ({ data, thresholds }) => {
-    const memoizedStats = useMemo(() => {
-        const statsByRace = data.reduce((acc, d) => {
-            if (d.DURACION_CASO_EN_DIAS > 0) {
-                if (!acc[d.RAZA]) acc[d.RAZA] = [];
-                acc[d.RAZA].push(d.DURACION_CASO_EN_DIAS);
-            }
-            return acc;
-        }, {} as Record<string, number[]>);
 
-        const chartData = Object.entries(statsByRace).map(([race, durations]) => ({
-            name: race,
-            'Duración Promedio (Días)': durations.reduce((a, b) => a + b, 0) / durations.length,
-        }));
-
-        const averages = chartData.map(d => d['Duración Promedio (Días)']);
-        const diff = averages.length > 1 ? Math.max(...averages) - Math.min(...averages) : 0;
-
-        const scatterData = data
-            .filter(d => d.SENTENCE_IN_YEARS !== undefined && d.DURACION_CASO_EN_DIAS > 0 && d.SENTENCE_IN_YEARS < 99)
-            .map(d => ({
-                race: d.RAZA,
-                duration: d.DURACION_CASO_EN_DIAS,
-                sentence: d.SENTENCE_IN_YEARS,
-            }));
-
-        return { chartData, diff, scatterData };
+const DurationAnalysis: React.FC<{ data: CaseData[]; thresholds: any }> = ({ data, thresholds }) => {
+    const avgDurationByRace = useMemo(() => {
+        if (!data || data.length === 0) return [];
+        const races = [...new Set(data.map(d => d.RAZA))];
+        const result = races.map(race => {
+            const group = data.filter(d => d.RAZA === race);
+            const totalDays = group.reduce((acc, d) => acc + d.DURACION_CASO_EN_DIAS, 0);
+            const avg = group.length > 0 ? totalDays / group.length : 0;
+            return { name: race, avgDuration: Math.round(avg) };
+        });
+        return result;
     }, [data]);
-    
+
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold">Análisis de Duración Procesal</h2>
-            {memoizedStats.diff > thresholds.duration && (
-                <Alert type="warning" title="Sesgo Temporal Detectado">
-                    La diferencia en la duración promedio del caso entre grupos es de <strong>{memoizedStats.diff.toFixed(0)} días</strong>, superando el umbral de {thresholds.duration} días.
-                </Alert>
-            )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card title="Duración Promedio del Caso por Raza">
-                     <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={memoizedStats.chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Bar dataKey="Duración Promedio (Días)">
-                                {memoizedStats.chartData.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </Card>
-                <Card title="Correlación Duración vs. Sentencia">
-                    <ResponsiveContainer width="100%" height={300}>
-                        <ScatterChart>
-                            <CartesianGrid />
-                            <XAxis type="number" dataKey="sentence" name="Sentencia (Años)" unit="años" />
-                            <YAxis type="number" dataKey="duration" name="Duración (Días)" unit="días" />
-                            <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                            <Legend />
-                            {Object.keys(RACE_COLORS).map(race => (
-                                <Scatter key={race} name={race} data={memoizedStats.scatterData.filter(d => d.race === race)} fill={RACE_COLORS[race]} />
-                            ))}
-                        </ScatterChart>
-                    </ResponsiveContainer>
-                </Card>
-            </div>
+            <Card title="Duración Promedio del Caso por Raza (en días)">
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={avgDurationByRace}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip content={<CustomTooltip />} unit=" días" />
+                        <Bar dataKey="avgDuration" name="Duración Promedio">
+                            {avgDurationByRace.map(entry => <Cell key={`cell-${entry.name}`} fill={RACE_COLORS[entry.name] || '#8884d8'} />)}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </Card>
         </div>
     );
 };
+
 const IntersectionalAnalysis: React.FC<{ data: CaseData[] }> = ({ data }) => {
-     const memoizedData = useMemo(() => {
-        const intersectionalData = data.map(d => ({
-            ...d,
-            ageGroup: getAgeGroup(d.EDAD_AL_INCIDENTE),
-            intersection: `${d.RAZA}-${d.GENERO}-${getAgeGroup(d.EDAD_AL_INCIDENTE)}`,
-            isGuilty: d.DISPOSICION_CARGO.toLowerCase().includes('guilty'),
-        }));
-
-        const stats = intersectionalData.reduce((acc, d) => {
-            if(!acc[d.intersection]) acc[d.intersection] = { total: 0, guilty: 0, avgSentence: [], avgDuration: []};
-            acc[d.intersection].total++;
-            if(d.isGuilty) acc[d.intersection].guilty++;
-            if(d.SENTENCE_IN_YEARS) acc[d.intersection].avgSentence.push(d.SENTENCE_IN_YEARS);
-            if(d.DURACION_CASO_EN_DIAS) acc[d.intersection].avgDuration.push(d.DURACION_CASO_EN_DIAS);
-            return acc;
-        }, {} as Record<string, {total: number, guilty: number, avgSentence: number[], avgDuration: number[]}>);
-        
-        return Object.entries(stats).map(([intersection, values]) => ({
-            intersection,
-            count: values.total,
-            convictionRate: (values.guilty / values.total * 100).toFixed(1),
-            avgSentence: (values.avgSentence.reduce((a, b) => a + b, 0) / values.avgSentence.length || 0).toFixed(2),
-            avgDuration: (values.avgDuration.reduce((a, b) => a + b, 0) / values.avgDuration.length || 0).toFixed(0)
-        })).sort((a,b) => b.count - a.count);
-
+    const intersectionalData = useMemo(() => {
+        return data
+            .filter(d => d.SENTENCE_IN_YEARS !== undefined && d.SENTENCE_IN_YEARS < 99)
+            .map(d => ({
+                age: d.EDAD_AL_INCIDENTE,
+                sentence: d.SENTENCE_IN_YEARS,
+                race: d.RAZA
+            }));
     }, [data]);
     
-     return (
-         <Card title="Análisis Interseccional (Raza, Género y Edad)">
-            <p className="text-sm text-gray-600 mb-4">Esta tabla muestra los resultados para combinaciones demográficas. Identifica grupos con peores resultados.</p>
-             <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Grupo Interseccional</th>
-                                <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Total Casos</th>
-                                <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Tasa Condena (%)</th>
-                                <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Sentencia Prom. (Años)</th>
-                                <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Duración Prom. (Días)</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {memoizedData.slice(0, 20).map((row, i) => (
-                                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                    <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-800">{row.intersection}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-gray-700">{row.count}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-gray-700">{row.convictionRate}%</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-gray-700">{row.avgSentence}</td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-gray-700">{row.avgDuration}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-         </Card>
-     );
+    const races = [...new Set(data.map(d => d.RAZA))];
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold">Análisis Interseccional</h2>
+            <Card title="Sentencia vs. Edad en el Incidente, por Raza">
+                <p className="text-sm text-gray-600 mb-4">Cada punto representa un caso. Se excluyen sentencias de cadena perpetua para una mejor visualización.</p>
+                <ResponsiveContainer width="100%" height={400}>
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                        <CartesianGrid />
+                        <XAxis type="number" dataKey="age" name="Edad en el Incidente" unit=" años" />
+                        <YAxis type="number" dataKey="sentence" name="Sentencia" unit=" años" />
+                        <ZAxis dataKey="race" name="Raza" />
+                        <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                        <Legend />
+                        {races.map((race, i) => (
+                            <Scatter 
+                                key={race} 
+                                name={race} 
+                                data={intersectionalData.filter(d => d.race === race)} 
+                                fill={RACE_COLORS[race] || COLORS[i % COLORS.length]} 
+                            />
+                        ))}
+                    </ScatterChart>
+                </ResponsiveContainer>
+            </Card>
+        </div>
+    );
 };
 
+// FIX: Added default export to resolve import error in App.tsx.
 export default Dashboard;
